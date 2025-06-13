@@ -4,16 +4,17 @@ import re
 import requests
 from bs4 import BeautifulSoup
 import nltk
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords, wordnet
-from nltk.stem import WordNetLemmatizer, PorterStemmer
+from nltk.stem import WordNetLemmatizer
 from googlesearch import search
 import uuid
 import time
 from urllib.parse import urlparse, urljoin
-import string
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import hashlib
 import random
-import datetime
+from collections import defaultdict
 
 # Download NLTK resources
 nltk.download('punkt', quiet=True)
@@ -21,191 +22,35 @@ nltk.download('wordnet', quiet=True)
 nltk.download('stopwords', quiet=True)
 nltk.download('averaged_perceptron_tagger', quiet=True)
 
-# Configuration for web scraping
+# Configuration
 CONFIG = {
     'max_search_results': 10,
     'max_paragraphs_per_site': 2,
-    'max_pages_per_site': 2,
+    'max_pages_per_site': 1,
     'min_paragraph_length': 50,
     'keyword_match_ratio': 0.7,
     'alpha_char_ratio': 0.7,
     'cache_dir': 'database',
-    'search_pause': 2.0,
+    'search_pause': 0.5,
     'num_results': 10,
     'request_timeout': 5,
-    'topic_relevance_threshold': 0.5
+    'topic_relevance_threshold': 0.5,
+    'max_workers': 4,
+    'max_summary_sentences': 2
 }
 
 # Initialize NLTK
 lemmatizer = WordNetLemmatizer()
-stemmer = PorterStemmer()
-stop_words = set(stopwords.words('english') + list(string.punctuation))
+stop_words = set(stopwords.words('english'))
+keyword_cache = {}
+used_paragraphs = defaultdict(list)  # Track used paragraphs per query
 
-def preprocess_text(text):
-    """Tokenize, remove stopwords, and stem the input text for local search."""
-    text = text.lower()
-    tokens = word_tokenize(text)
-    tokens = [word for word in tokens if word not in stop_words]
-    tokens = [stemmer.stem(word) for word in tokens]
-    return tokens
-
-def get_synonyms(word):
-    """Get synonyms for a word using WordNet."""
-    synonyms = set()
-    for syn in wordnet.synsets(word):
-        if syn is not None and hasattr(syn, 'lemmas'):
-            for lemma in syn.lemmas():
-                synonyms.add(lemma.name().replace('_', ' '))
-    return list(synonyms)
-
-def paraphrase_sentence(sentence):
-    """Paraphrase a sentence by replacing words with synonyms."""
-    tokens = word_tokenize(sentence)
-    new_tokens = []
-    for token in tokens:
-        if random.random() < 0.3:  # 30% chance to replace a word
-            synonyms = get_synonyms(token)
-            if synonyms and token not in string.punctuation:
-                new_tokens.append(random.choice(synonyms))
-            else:
-                new_tokens.append(token)
-        else:
-            new_tokens.append(token)
-    return ' '.join(new_tokens)
-
-def summarize_text(text, min_words=200):
-    """Summarize text to ensure at least min_words, using paraphrasing."""
-    sentences = nltk.sent_tokenize(text)
-    random.shuffle(sentences)
-    summary = []
-    word_count = 0
-    for sentence in sentences:
-        paraphrased = paraphrase_sentence(sentence)
-        summary.append(paraphrased)
-        word_count += len(word_tokenize(paraphrased))
-        if word_count >= min_words:
-            break
-    return ' '.join(summary) if summary else text
-
-def load_directory_data(directory_path='data'):
-    """Load all JSON files from the specified directory into memory."""
-    data = []
-    try:
-        if not os.path.exists(directory_path):
-            print(f"Error: Directory {directory_path} does not exist.")
-            return []
-        
-        for filename in os.listdir(directory_path):
-            if filename.endswith('.json'):
-                file_path = os.path.join(directory_path, filename)
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as file:
-                        file_data = json.load(file)
-                        title = file_data.get('title', '')
-                        paragraphs = file_data.get('paragraphs', [])
-                        for idx, para in enumerate(paragraphs):
-                            question = f"Who is {title}?" if idx == 0 else f"What is known about {title} {idx}?"
-                            data.append({'question': question, 'answer': para, 'title': title})
-                except Exception as e:
-                    print(f"Error loading {file_path}: {str(e)}")
-        return data
-    except Exception as e:
-        print(f"Error accessing directory {directory_path}: {str(e)}")
-        return []
-
-def cache_data(data):
-    """Preprocess and cache question-answer pairs with stemmed questions."""
-    cached_data = []
-    for item in data:
-        if 'question' not in item or 'answer' not in item:
-            continue
-        processed_question = preprocess_text(item['question'])
-        cached_data.append({
-            'processed_question': processed_question,
-            'original_question': item['question'],
-            'answer': item['answer'],
-            'title': item.get('title', '')
-        })
-    return cached_data
-
-def save_chat_history(question, answer, chat_file='chat.json'):
-    """Save question-answer pair to chat.json."""
-    chat_history = []
-    try:
-        if os.path.exists(chat_file):
-            with open(chat_file, 'r', encoding='utf-8') as file:
-                try:
-                    chat_history = json.load(file)
-                    if not isinstance(chat_history, list):
-                        chat_history = []
-                except json.JSONDecodeError:
-                    chat_history = []
-    except Exception as e:
-        print(f"Error reading {chat_file}: {str(e)}")
-    
-    chat_history.append({
-        'question': question,
-        'answer': answer,
-        'timestamp': str(datetime.datetime.now())
-    })
-    
-    try:
-        with open(chat_file, 'w', encoding='utf-8') as file:
-            json.dump(chat_history, file, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"Error saving to {chat_file}: {str(e)}")
-
-def find_local_answer(question, cached_data, used_answers=None):
-    """Find a varied answer from cached local data, ensuring min 200 words."""
-    if used_answers is None:
-        used_answers = {}
-    
-    processed_question = preprocess_text(question)
-    best_matches = []
-    max_matches = 0
-
-    for item in cached_data:
-        matches = len(set(processed_question) & set(item['processed_question']))
-        if matches > 0:
-            if matches == max_matches:
-                best_matches.append(item)
-            elif matches > max_matches:
-                best_matches = [item]
-                max_matches = matches
-
-    if not best_matches:
-        return None
-
-    question_key = ' '.join(processed_question)
-    used_for_question = used_answers.get(question_key, set())
-    available_matches = [item for item in best_matches if item['answer'] not in used_for_question]
-
-    if not available_matches:
-        used_answers[question_key] = set()
-        available_matches = best_matches
-
-    selected_item = random.choice(available_matches)
-    selected_answer = selected_item['answer']
-    
-    word_count = len(word_tokenize(selected_answer))
-    if word_count < 200:
-        same_title_items = [item['answer'] for item in cached_data if item['title'] == selected_item['title']]
-        combined_answer = ' '.join(same_title_items[:max(2, len(same_title_items))])
-        selected_answer = combined_answer
-        word_count = len(word_tokenize(selected_answer))
-        if word_count < 200:
-            selected_answer = (selected_answer + ' ' + selected_answer)[:1000]
-
-    final_answer = summarize_text(selected_answer, min_words=200)
-    
-    if question_key not in used_answers:
-        used_answers[question_key] = set()
-    used_answers[question_key].add(selected_item['answer'])
-    
-    return final_answer
+def hash_query(query):
+    """Generate a consistent hash for the query."""
+    return hashlib.md5(query.lower().encode('utf-8')).hexdigest()
 
 def normalize_query(query):
-    """Convert query to a slug for caching based on nouns or named entities."""
+    """Convert query to a slug based on nouns or named entities."""
     tokens = word_tokenize(query.lower())
     pos_tags = nltk.pos_tag(tokens)
     nouns = [token for token, pos in pos_tags if pos.startswith('NN') or pos in ('JJ', 'VB')]
@@ -216,40 +61,101 @@ def normalize_query(query):
     return slug if slug else 'query-' + str(uuid.uuid4())[:8]
 
 def get_query_keywords(query):
-    """Extract lemmatized keywords from query, excluding stopwords."""
+    """Extract lemmatized keywords, using cache."""
+    query_hash = hash_query(query)
+    if query_hash in keyword_cache:
+        return keyword_cache[query_hash]
     tokens = word_tokenize(query.lower())
-    return [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
+    keywords = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
+    keyword_cache[query_hash] = keywords
+    return keywords
 
 def clean_text(text):
-    """Clean extracted text by removing unwanted patterns and normalizing whitespace."""
+    """Clean extracted text."""
     text = re.sub(r'(access denied|captcha|advertisement|subscribe now|log in)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def is_relevant_paragraph(paragraph, query_keywords):
-    """Check if paragraph is relevant based on keyword overlap and alphabetic ratio."""
+    """Check if paragraph is relevant based on keyword overlap."""
     if len(paragraph) < CONFIG['min_paragraph_length']:
-        return False
+        return False, 0
     alpha_count = sum(1 for c in paragraph if c.isalpha())
     alpha_ratio = alpha_count / len(paragraph) if len(paragraph) > 0 else 0
     if alpha_ratio < CONFIG['alpha_char_ratio']:
-        return False
+        return False, 0
     tokens = word_tokenize(paragraph.lower())
     lemmatized = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
     if not lemmatized:
-        return False
+        return False, 0
     matches = len(set(query_keywords) & set(lemmatized))
     match_ratio = matches / len(set(query_keywords)) if query_keywords else 0
     is_definition = paragraph.lower().startswith(('is ', 'refers to ', 'means ', 'defined as '))
-    return match_ratio >= CONFIG['keyword_match_ratio'] or is_definition
+    return (match_ratio >= CONFIG['keyword_match_ratio'] or is_definition), match_ratio
 
-def load_cache(topic):
-    """Load cached answer from JSON file."""
-    cache_file = os.path.join(CONFIG['cache_dir'], f'{topic}.json')
-    if os.path.exists(cache_file):
-        with open(cache_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return None
+def summarize_text(text, query_keywords, max_sentences=2):
+    """Summarize text to 1–2 sentences, prioritizing sentences with query keywords."""
+    sentences = sent_tokenize(text)
+    if not sentences:
+        return text
+    # Score sentences based on keyword overlap
+    scored_sentences = []
+    for sentence in sentences:
+        tokens = word_tokenize(sentence.lower())
+        lemmatized = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
+        matches = len(set(query_keywords) & set(lemmatized))
+        score = matches / len(set(query_keywords)) if query_keywords else 0
+        scored_sentences.append((sentence, score))
+    # Sort by score and select top sentences
+    scored_sentences.sort(key=lambda x: x[1], reverse=True)
+    selected = [s[0] for s in scored_sentences[:min(max_sentences, len(scored_sentences))]]
+    return ' '.join(selected) if selected else text[:200]
+
+def extract_text(data, texts=None):
+    """Recursively extract text from JSON data."""
+    if texts is None:
+        texts = []
+    if isinstance(data, str):
+        cleaned = clean_text(data)
+        if cleaned:
+            texts.append(cleaned)
+    elif isinstance(data, list):
+        for item in data:
+            extract_text(item, texts)
+    elif isinstance(data, dict):
+        for value in data.values():
+            extract_text(value, texts)
+    return texts
+
+def load_cache(topic, query):
+    """Load and parse cached JSON files, selecting a random unused relevant paragraph."""
+    cache_dir = CONFIG['cache_dir']
+    query_keywords = get_query_keywords(query)
+    query_hash = hash_query(query)
+    relevant_paragraphs = []
+
+    for filename in os.listdir(cache_dir):
+        if filename.endswith('.json') and topic.lower() in filename.lower().replace('_', '-'):
+            try:
+                with open(os.path.join(cache_dir, filename), 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    paragraphs = extract_text(data)
+                    for paragraph in paragraphs:
+                        is_relevant, score = is_relevant_paragraph(paragraph, query_keywords)
+                        if is_relevant and paragraph not in used_paragraphs[query_hash]:
+                            relevant_paragraphs.append((paragraph, score))
+            except Exception:
+                continue
+
+    if not relevant_paragraphs:
+        return None
+    # Sort by score and randomly select one from top-scoring paragraphs
+    relevant_paragraphs.sort(key=lambda x: x[1], reverse=True)
+    top_paragraphs = [p for p, s in relevant_paragraphs if s >= relevant_paragraphs[0][1] * 0.9]
+    selected_paragraph = random.choice(top_paragraphs) if top_paragraphs else relevant_paragraphs[0][0]
+    used_paragraphs[query_hash].append(selected_paragraph)
+    # Summarize the selected paragraph
+    return summarize_text(selected_paragraph, query_keywords, CONFIG['max_summary_sentences'])
 
 def save_cache(topic, query, answer):
     """Save answer to JSON cache."""
@@ -260,7 +166,7 @@ def save_cache(topic, query, answer):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def get_internal_links(soup, base_url, domain):
-    """Extract internal links from a page, staying within the same domain."""
+    """Extract limited internal links."""
     internal_links = set()
     for a_tag in soup.find_all('a', href=True):
         href = a_tag['href']
@@ -268,17 +174,22 @@ def get_internal_links(soup, base_url, domain):
         parsed_url = urlparse(full_url)
         if parsed_url.netloc == domain and parsed_url.scheme in ('http', 'https'):
             internal_links.add(full_url)
+        if len(internal_links) >= 2:
+            break
     return list(internal_links)
 
 def is_site_relevant(url, query_keywords):
-    """Check if a site is relevant to the query based on title, description, or URL."""
+    """Check site relevance using metadata."""
     try:
+        response = requests.head(url, timeout=CONFIG['request_timeout'], allow_redirects=True)
+        if response.status_code != 200:
+            return False
         response = requests.get(url, timeout=CONFIG['request_timeout'])
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         title = soup.title.get_text() if soup.title else ''
         meta_desc = soup.find('meta', attrs={'name': 'description'})
-        description = meta_desc.get('content', '') if meta_desc and 'content' in getattr(meta_desc, 'attrs', {}) else ''
+        description = meta_desc.get('content', '') if meta_desc else ''
         url_path = urlparse(url).path
         combined_text = f"{title} {description} {url_path}".lower()
         tokens = word_tokenize(combined_text)
@@ -291,8 +202,8 @@ def is_site_relevant(url, query_keywords):
     except Exception:
         return False
 
-def scrape_site(url, query_keywords, visited_urls):
-    """Scrape a single site and its internal links for relevant paragraphs."""
+def scrape_site(url, query_keywords, visited_urls, query_hash):
+    """Scrape a site and its internal links for relevant paragraphs."""
     relevant_paragraphs = []
     domain = urlparse(url).netloc
     pages_to_scrape = [url]
@@ -311,7 +222,7 @@ def scrape_site(url, query_keywords, visited_urls):
             count = 0
             for p in paragraphs:
                 text = clean_text(p.get_text())
-                if text and is_relevant_paragraph(text, query_keywords):
+                if text and is_relevant_paragraph(text, query_keywords)[0] and text not in used_paragraphs[query_hash]:
                     relevant_paragraphs.append(text)
                     count += 1
                     if count >= CONFIG['max_paragraphs_per_site']:
@@ -326,73 +237,68 @@ def scrape_site(url, query_keywords, visited_urls):
     return relevant_paragraphs
 
 def scrape_web(query):
-    """Scrape web for query using googlesearch-python, only visiting topic-relevant sites."""
+    """Scrape web, checking cache first."""
+    topic = normalize_query(query)
+    query_hash = hash_query(query)
+    cached_answer = load_cache(topic, query)
+    if cached_answer:
+        return cached_answer
+
     query_keywords = get_query_keywords(query)
     visited_urls = set()
-    try:
-        urls = search(query, num_results=CONFIG['num_results'], sleep_interval=CONFIG['search_pause'])
-        for url in urls:
-            if is_site_relevant(url, query_keywords):
-                relevant_paragraphs = scrape_site(url, query_keywords, visited_urls)
-                if relevant_paragraphs:
-                    return summarize_text(relevant_paragraphs[0], min_words=200)
+    urls = list(search(query, num_results=CONFIG['num_results'], sleep_interval=CONFIG['search_pause']))
+
+    # Parallel relevance checking
+    relevant_urls = []
+    with ThreadPoolExecutor(max_workers=CONFIG['max_workers']) as executor:
+        future_to_url = {executor.submit(is_site_relevant, url, query_keywords): url for url in urls}
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                if future.result():
+                    relevant_urls.append(url)
+            except Exception:
+                continue
+
+    # Parallel scraping
+    relevant_paragraphs = []
+    with ThreadPoolExecutor(max_workers=CONFIG['max_workers']) as executor:
+        future_to_url = {executor.submit(scrape_site, url, query_keywords, visited_urls, query_hash): url for url in relevant_urls}
+        for future in as_completed(future_to_url):
+            try:
+                paragraphs = future.result()
+                relevant_paragraphs.extend(paragraphs)
+            except Exception:
+                continue
             time.sleep(CONFIG['search_pause'])
-    except Exception as e:
-        print(f"Error during search: {e}")
+
+    if not relevant_paragraphs:
         return None
-    return None
+    # Randomly select a paragraph
+    selected_paragraph = random.choice(relevant_paragraphs)
+    used_paragraphs[query_hash].append(selected_paragraph)
+    # Summarize the selected paragraph
+    answer = summarize_text(selected_paragraph, query_keywords, CONFIG['max_summary_sentences'])
+    save_cache(topic, query, answer)
+    return answer
 
 def main():
-    """Run the combined chatbot."""
-    directory_path = 'data'
-    chat_file = 'chat.json'
-    print(f"Loading data from {directory_path}...")
-    data = load_directory_data(directory_path)
-    
-    if not data:
-        print("No valid data loaded. Will rely on web search.")
-    else:
-        print("Preprocessing and caching data...")
-        cached_data = cache_data(data)
-        print(f"Loaded {len(cached_data)} question-answer pairs.")
-    
-    used_answers = {}
-    print("\nChatbot is ready! Type 'exit' or 'quit' to quit.")
+    """Main chatbot loop."""
+    print("Bot: Hello! Ask me anything or type 'exit'/'quit' to stop.")
     while True:
-        user_input = input("You: ").strip()
-        if user_input.lower() in ('exit', 'quit'):
+        query = input("You: ").strip()
+        if query.lower() in ('exit', 'quit'):
             print("Bot: Goodbye!")
             break
-        if not user_input:
+        if not query:
             print("Bot: Please enter a valid query.")
             continue
 
-        # Check local cache first
-        answer = None
-        if data:
-            answer = find_local_answer(user_input, cached_data, used_answers)
-        
+        answer = scrape_web(query)
         if answer:
             print(f"Bot: {answer}")
-            save_chat_history(user_input, answer, chat_file)
-            continue
-        
-        # If no local answer, check web cache and search online
-        topic = normalize_query(user_input)
-        cached = load_cache(topic)
-        if cached and cached['query'].lower() == user_input.lower():
-            print(f"Bot: {cached['answer']}")
-            save_chat_history(user_input, cached['answer'], chat_file)
-            continue
-        
-        answer = scrape_web(user_input)
-        if answer:
-            save_cache(topic, user_input, answer)
-            print(f"Bot: {answer}")
-            save_chat_history(user_input, answer, chat_file)
         else:
-            print("Bot: [Info] No relevant information found.")
-            save_chat_history(user_input, "No relevant information found.", chat_file)
+            print("Bot: [Info] No relevant content found.")
 
 if __name__ == "__main__":
     main()
