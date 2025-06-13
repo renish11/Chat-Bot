@@ -206,6 +206,8 @@ import uuid
 import time
 from urllib.parse import urlparse, urljoin
 
+
+#fdg
 # Download NLTK resources
 nltk.download('punkt', quiet=True)
 nltk.download('wordnet', quiet=True)
