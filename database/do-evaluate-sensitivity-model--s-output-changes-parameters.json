@@ -1,0 +1,4 @@
+{
+  "query": "How do you evaluate the sensitivity of a model’s output to changes in its parameters?",
+  "answer": "“Parameter Sensitivity Analysis” is a technique used in engineering, science, and various fields to assess how changes in the input parameters of a system or model affect the output or results. The goal is to understand the sensitivity of the model to variations in specific parameters and identify which parameters have the most significant impact on the outcomes. This analysis is crucial for making informed decisions, optimizing designs, and improving the robustness of systems."
+}

@@ -1,0 +1,4 @@
+{
+  "query": "How do parameter initialization techniques impact the convergence and stability of a model during training?",
+  "answer": "Initializing the parameters of a deep neural network is an important step in the training process, as it can have a significant impact on the convergence and performance of the model. Here are some common parameter initialization techniques used in deep learning:"
+}

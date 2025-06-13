@@ -1,0 +1,4 @@
+{
+  "query": "When designing a convolutional neural network (CNN), how do you decide on filter sizes and their impact on parameters?",
+  "answer": "When deciding what filters to use in a convolutional neural network (CNN), focus on three main factors: the filter size (kernel dimensions), the number of filters per layer, and the task-specific requirements of your model. These choices directly impact feature extraction, computational efficiency, and model performance."
+}

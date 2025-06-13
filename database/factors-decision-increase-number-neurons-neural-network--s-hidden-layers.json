@@ -1,0 +1,4 @@
+{
+  "query": "What factors influence the decision to increase the number of neurons in a neural network’s hidden layers?",
+  "answer": "When designing neural networks, one of the critical decisions you’ll face is determining the number of neurons in each hidden layer. While the number of neurons in the input and output layers is typically dictated by the nature of your data and the problem you’re solving, choosing the right number of neurons for hidden layers requires more nuanced consideration. In this blog post, we’ll explore best practices for determining the number of neurons in hidden layers and the rationale behind these decisions."
+}

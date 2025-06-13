@@ -1,0 +1,28 @@
+{
+  "query": "what is ml",
+  "paragraphs": [
+    "Machine learning (ML) is a branch of artificial intelligence (AI) focused on enabling computers and machines to imitate the way that humans learn, to perform tasks autonomously, and to improve their performance and accuracy through experience and exposure to more data.",
+    "Unsupervised learning, also known as unsupervised machine learning, uses machine learning (ML) algorithms to analyze and cluster unlabeled data sets. These algorithms discover hidden patterns or data groupings without the need for human intervention.",
+    "This is the core process of training, tuning, and evaluating your model, as described in the previous section. It includes establishing MLOps. Machine learning operations (MLOps) are a set of practices that automate and simplify machine learning (ML) workflows and deployments. They unify ML development with deployment and operations. For example, you create a CI/CD pipeline that automates the build, train, and release to staging and production environments.",
+    "Enhance and visualize deep learning applications with ML tools",
+    "Build ML applications that train quickly and run virtually anywhere",
+    "Artificial intelligence (AI) is an umbrella term for different strategies and techniques you can use to make machines more humanlike. AI includes everything from smart assistants like Alexa to robotic vacuum cleaners and self-driving cars. Machine learning (ML) is one among many other branches of AI. ML is the science of developing algorithms and statistical models that computer systems use to perform complex tasks without explicit instructions. The systems rely on patterns and inference instead. Computer systems use ML algorithms to process large quantities of historical data and identify data patterns. While machine learning is AI, not all AI activities are machine learning.",
+    "Machine learning (ML) is a narrowly focused branch of artificial intelligence (AI). But both of these fields go beyond basic automation and programming to generate outputs based on complex data analysis.",
+    "A property pricing ML algorithm, for example, applies knowledge of previous sales prices, market conditions, floor plans, and location to predict the price of a house.",
+    "ML applications are also broad. They can include predictive machinery maintenance scheduling, dynamic travel pricing, insurance fraud detection, and retail demand forecasting.",
+    "Machine learning (ML) is a specific branch of artificial intelligence (AI). ML has a limited scope and focus compared to AI. AI includes several strategies and technologies that are outside the scope of machine learning.",
+    "On the other hand, the goal of ML is to have a machine analyze large volumes of data. The machine will use statistical models to identify patterns in the data and produce a result. The result has an associated probability of correctness or degree of confidence.",
+    "Within ML, methods are divided into two broad categories: supervised and unsupervised learning. Supervised ML algorithms learn to solve problems using data values labeled input and output. Unsupervised learning is more exploratory and attempts to discover hidden patterns in unlabeled data.",
+    "The process of building an ML solution typically involves two tasks:",
+    "Data scientists select important data features and feed them into the model for training. They continuously refine the dataset with updated data and error checking. Data quality and variety improve the accuracy of the ML model.",
+    "ML solutions require a dataset of several hundred data points for training, plus sufficient computational power to run. Depending on your application and use case, a single server instance or a small server cluster may be sufficient.",
+    "However, it’s important to note that both prebuilt AI and ML functions are available. You can integrate them into your application through APIs without the need for additional resources.",
+    "If you want to use artificial intelligence (AI) or machine learning (ML), start by defining the problems you want to solve or research questions you want to explore. Once you identify the problem space, you can determine the appropriate AI or ML technology to solve it. It’s important to consider the type and size of training data available and preprocess the data before you start.",
+    "AI is broad term for machine-based applications that mimic human intelligence. Not all AI solutions are ML.",
+    "ML is an artificial intelligence methodology. All ML solutions are AI solutions.",
+    "ML is best for identifying patterns in large sets of data to solve specific problems.",
+    "For ML, people manually select and extract features from raw data and assign weights to train the model.",
+    "You train new or existing ML models for your specific use case. Prebuilt ML APIs are available.",
+    "Amazon SageMaker is a complete platform to build your ML solutions from the ground up. SageMaker has a full suite of prebuilt machine learning models, storage and compute capabilities, and a fully managed environment."
+  ]
+}

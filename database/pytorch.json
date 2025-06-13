@@ -1,0 +1,4 @@
+{
+  "query": "what is pytorch",
+  "answer": "PyTorch is a machine learning library based on the Torch library,[4][5][6] used for applications such as computer vision and natural language processing,[7] originally developed by Meta AI and now part of the Linux Foundation umbrella.[8][9][10][11] It is one of the most popular deep learning frameworks, alongside others such as TensorFlow,[12] offering free and open-source software released under the modified BSD license. Although the Python interface is more polished and the primary focus of development, PyTorch also has a C++ interface.[13]"
+}
