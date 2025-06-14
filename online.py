@@ -207,228 +207,6 @@
 
 
 
-# import json
-# import os
-# import re
-# import requests
-# from bs4 import BeautifulSoup
-# import nltk
-# from nltk.tokenize import word_tokenize
-# from nltk.corpus import stopwords, wordnet
-# from nltk.stem import WordNetLemmatizer
-# from googlesearch import search
-# import uuid
-# import time
-# from urllib.parse import urlparse, urljoin
-
-
-# #fdg
-# # Download NLTK resources
-# nltk.download('punkt', quiet=True)
-# nltk.download('wordnet', quiet=True)
-# nltk.download('stopwords', quiet=True)
-# nltk.download('averaged_perceptron_tagger', quiet=True)
-
-# # Configuration
-# CONFIG = {
-#     'max_search_results': 10,
-#     'max_paragraphs_per_site': 2,
-#     'max_pages_per_site': 2,  # Max number of internal pages to scrape per site
-#     'min_paragraph_length': 50,
-#     'keyword_match_ratio': 0.7,
-#     'alpha_char_ratio': 0.7,
-#     'cache_dir': 'database',
-#     'search_pause': 2.0,
-#     'num_results': 10,
-#     'request_timeout': 5,
-#     'topic_relevance_threshold': 0.5  # Minimum keyword match ratio for site relevance
-# }
-
-# # Initialize NLTK
-# lemmatizer = WordNetLemmatizer()
-# stop_words = set(stopwords.words('english'))
-
-# def normalize_query(query):
-#     """Convert query to a slug for caching based on nouns or named entities."""
-#     tokens = word_tokenize(query.lower())
-#     pos_tags = nltk.pos_tag(tokens)
-#     nouns = [token for token, pos in pos_tags if pos.startswith('NN') or pos in ('JJ', 'VB')]
-#     if not nouns:
-#         nouns = tokens
-#     slug = '-'.join(nouns)
-#     slug = re.sub(r'[^a-z0-9\-]', '', slug)
-#     return slug if slug else 'query-' + str(uuid.uuid4())[:8]
-
-# def get_query_keywords(query):
-#     """Extract lemmatized keywords from query, excluding stopwords."""
-#     tokens = word_tokenize(query.lower())
-#     return [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
-
-# def clean_text(text):
-#     """Clean extracted text by removing unwanted patterns and normalizing whitespace."""
-#     text = re.sub(r'(access denied|captcha|advertisement|subscribe now|log in)', '', text, flags=re.IGNORECASE)
-#     text = re.sub(r'\s+', ' ', text).strip()
-#     return text
-
-# def is_relevant_paragraph(paragraph, query_keywords):
-#     """Check if paragraph is relevant based on keyword overlap and alphabetic ratio."""
-#     if len(paragraph) < CONFIG['min_paragraph_length']:
-#         return False
-#     alpha_count = sum(1 for c in paragraph if c.isalpha())
-#     alpha_ratio = alpha_count / len(paragraph) if len(paragraph) > 0 else 0
-#     if alpha_ratio < CONFIG['alpha_char_ratio']:
-#         return False
-#     tokens = word_tokenize(paragraph.lower())
-#     lemmatized = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
-#     if not lemmatized:
-#         return False
-#     matches = len(set(query_keywords) & set(lemmatized))
-#     match_ratio = matches / len(set(query_keywords)) if query_keywords else 0
-#     is_definition = paragraph.lower().startswith(('is ', 'refers to ', 'means ', 'defined as '))
-#     return match_ratio >= CONFIG['keyword_match_ratio'] or is_definition
-
-# def load_cache(topic):
-#     """Load cached answer from JSON file."""
-#     cache_file = os.path.join(CONFIG['cache_dir'], f'{topic}.json')
-#     if os.path.exists(cache_file):
-#         with open(cache_file, 'r', encoding='utf-8') as f:
-#             return json.load(f)
-#     return None
-
-# def save_cache(topic, query, answer):
-#     """Save answer to JSON cache."""
-#     os.makedirs(CONFIG['cache_dir'], exist_ok=True)
-#     cache_file = os.path.join(CONFIG['cache_dir'], f'{topic}.json')
-#     data = {'query': query, 'answer': answer}
-#     with open(cache_file, 'w', encoding='utf-8') as f:
-#         json.dump(data, f, ensure_ascii=False, indent=2)
-# def get_internal_links(soup, base_url, domain):
-#     """Extract internal links from a page, staying within the same domain."""
-#     internal_links = set()
-#     for a_tag in soup.find_all('a', href=True):
-#         href = a_tag['href']
-#         full_url = urljoin(base_url, href)
-#         parsed_url = urlparse(full_url)
-#         if parsed_url.netloc == domain and parsed_url.scheme in ('http', 'https'):
-#             internal_links.add(full_url)
-#     return list(internal_links)
-
-# def is_site_relevant(url, query_keywords):
-#     """Check if a site is relevant to the query based on title, description, or URL."""
-#     try:
-#         response = requests.get(url, timeout=CONFIG['request_timeout'])
-#         response.raise_for_status()
-#         soup = BeautifulSoup(response.text, 'html.parser')
-#         # Extract title
-#         title = soup.title.get_text() if soup.title else ''
-#         # Extract meta description
-#         meta_desc = soup.find('meta', attrs={'name': 'description'})
-#         description = meta_desc.get('content', '') if meta_desc else '' # type: ignore
-#         # Extract URL path
-#         url_path = urlparse(url).path
-#         # Combine text to analyze
-#         combined_text = f"{title} {description} {url_path}".lower()
-#         tokens = word_tokenize(combined_text)
-#         lemmatized = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
-#         if not lemmatized:
-#             return False
-#         matches = len(set(query_keywords) & set(lemmatized))
-#         match_ratio = matches / len(set(query_keywords)) if query_keywords else 0
-#         return match_ratio >= CONFIG['topic_relevance_threshold']
-#     except Exception:
-#         return False
-
-# def scrape_site(url, query_keywords, visited_urls):
-#     """Scrape a single site and its internal links for relevant paragraphs."""
-#     relevant_paragraphs = []
-#     domain = urlparse(url).netloc
-#     pages_to_scrape = [url]
-#     pages_scraped = 0
-
-#     while pages_to_scrape and pages_scraped < CONFIG['max_pages_per_site']:
-#         current_url = pages_to_scrape.pop(0)
-#         if current_url in visited_urls:
-#             continue
-#         visited_urls.add(current_url)
-#         try:
-#             response = requests.get(current_url, timeout=CONFIG['request_timeout'])
-#             response.raise_for_status()
-#             soup = BeautifulSoup(response.text, 'html.parser')
-#             paragraphs = soup.find_all('p')
-#             count = 0
-#             for p in paragraphs:
-#                 text = clean_text(p.get_text())
-#                 if text and is_relevant_paragraph(text, query_keywords):
-#                     relevant_paragraphs.append(text)
-#                     count += 1
-#                     if count >= CONFIG['max_paragraphs_per_site']:
-#                         break
-#             if count < CONFIG['max_paragraphs_per_site']:
-#                 internal_links = get_internal_links(soup, current_url, domain)
-#                 pages_to_scrape.extend([link for link in internal_links if link not in visited_urls])
-#             pages_scraped += 1
-#             time.sleep(CONFIG['search_pause'])
-#         except Exception:
-#             continue
-#     return relevant_paragraphs
-
-# def scrape_web(query):
-#     """Scrape web for query using googlesearch-python, only visiting topic-relevant sites."""
-#     query_keywords = get_query_keywords(query)
-#     visited_urls = set()
-#     try:
-#         urls = search(query, num_results=CONFIG['num_results'], sleep_interval=CONFIG['search_pause'])
-#         for url in urls:
-#             if is_site_relevant(url, query_keywords):
-#                 relevant_paragraphs = scrape_site(url, query_keywords, visited_urls)
-#                 if relevant_paragraphs:
-#                     return relevant_paragraphs[0]
-#             time.sleep(CONFIG['search_pause'])
-#     except Exception as e:
-#         print(f"Error during search: {e}")
-#         return None
-#     return None
-
-# def main():
-#     """Main chatbot loop."""
-#     print("Bot: Hello! Ask me anything or type 'exit'/'quit' to stop.")
-#     while True:
-#         query = input("You: ").strip()
-#         if query.lower() in ('exit', 'quit'):
-#             print("Bot: Goodbye!")
-#             break
-#         if not query:
-#             print("Bot: Please enter a valid query.")
-#             continue
-
-#         topic = normalize_query(query)
-#         cached = load_cache(topic)
-#         if cached and cached['query'].lower() == query.lower():
-#             print(f"Bot: {cached['answer']}")
-#             continue
-
-#         answer = scrape_web(query)
-#         if answer:
-#             save_cache(topic, query, answer)
-#             print(f"Bot: {answer}")
-#         else:
-#             print("Bot: [Info] No relevant content found.")
-
-# if __name__ == "__main__":
-#     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
 import json
 import os
 import re
@@ -442,9 +220,9 @@ from googlesearch import search
 import uuid
 import time
 from urllib.parse import urlparse, urljoin
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import hashlib
 
+
+#fdg
 # Download NLTK resources
 nltk.download('punkt', quiet=True)
 nltk.download('wordnet', quiet=True)
@@ -455,26 +233,20 @@ nltk.download('averaged_perceptron_tagger', quiet=True)
 CONFIG = {
     'max_search_results': 10,
     'max_paragraphs_per_site': 2,
-    'max_pages_per_site': 1,  # Reduced to limit internal link crawling
+    'max_pages_per_site': 2,  # Max number of internal pages to scrape per site
     'min_paragraph_length': 50,
     'keyword_match_ratio': 0.7,
     'alpha_char_ratio': 0.7,
     'cache_dir': 'database',
-    'search_pause': 0.5,  # Reduced from 2.0 to 0.5 for faster scraping
+    'search_pause': 2.0,
     'num_results': 10,
     'request_timeout': 5,
-    'topic_relevance_threshold': 0.5,
-    'max_workers': 4  # Number of threads for parallel requests
+    'topic_relevance_threshold': 0.5  # Minimum keyword match ratio for site relevance
 }
 
 # Initialize NLTK
 lemmatizer = WordNetLemmatizer()
 stop_words = set(stopwords.words('english'))
-keyword_cache = {}  # Cache for lemmatized keywords
-
-def hash_query(query):
-    """Generate a consistent hash for the query."""
-    return hashlib.md5(query.lower().encode('utf-8')).hexdigest()
 
 def normalize_query(query):
     """Convert query to a slug for caching based on nouns or named entities."""
@@ -488,14 +260,9 @@ def normalize_query(query):
     return slug if slug else 'query-' + str(uuid.uuid4())[:8]
 
 def get_query_keywords(query):
-    """Extract lemmatized keywords, using cache to avoid redundant NLTK processing."""
-    query_hash = hash_query(query)
-    if query_hash in keyword_cache:
-        return keyword_cache[query_hash]
+    """Extract lemmatized keywords from query, excluding stopwords."""
     tokens = word_tokenize(query.lower())
-    keywords = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
-    keyword_cache[query_hash] = keywords
-    return keywords
+    return [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
 
 def clean_text(text):
     """Clean extracted text by removing unwanted patterns and normalizing whitespace."""
@@ -520,14 +287,12 @@ def is_relevant_paragraph(paragraph, query_keywords):
     is_definition = paragraph.lower().startswith(('is ', 'refers to ', 'means ', 'defined as '))
     return match_ratio >= CONFIG['keyword_match_ratio'] or is_definition
 
-def load_cache(topic, query):
-    """Load cached answer from JSON file using query hash."""
+def load_cache(topic):
+    """Load cached answer from JSON file."""
     cache_file = os.path.join(CONFIG['cache_dir'], f'{topic}.json')
     if os.path.exists(cache_file):
         with open(cache_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if data['query'].lower() == query.lower():
-                return data['answer']
+            return json.load(f)
     return None
 
 def save_cache(topic, query, answer):
@@ -537,9 +302,8 @@ def save_cache(topic, query, answer):
     data = {'query': query, 'answer': answer}
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
 def get_internal_links(soup, base_url, domain):
-    """Extract limited internal links, prioritizing relevance."""
+    """Extract internal links from a page, staying within the same domain."""
     internal_links = set()
     for a_tag in soup.find_all('a', href=True):
         href = a_tag['href']
@@ -547,24 +311,22 @@ def get_internal_links(soup, base_url, domain):
         parsed_url = urlparse(full_url)
         if parsed_url.netloc == domain and parsed_url.scheme in ('http', 'https'):
             internal_links.add(full_url)
-        if len(internal_links) >= 2:  # Limit number of internal links
-            break
     return list(internal_links)
 
 def is_site_relevant(url, query_keywords):
-    """Check site relevance using lightweight HEAD request for metadata."""
+    """Check if a site is relevant to the query based on title, description, or URL."""
     try:
-        response = requests.head(url, timeout=CONFIG['request_timeout'], allow_redirects=True)
-        if response.status_code != 200:
-            return False
-        # Fallback to GET if metadata is needed (minimal parsing)
         response = requests.get(url, timeout=CONFIG['request_timeout'])
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
+        # Extract title
         title = soup.title.get_text() if soup.title else ''
+        # Extract meta description
         meta_desc = soup.find('meta', attrs={'name': 'description'})
-        description = meta_desc.get('content', '') if meta_desc else ''
+        description = meta_desc.get('content', '') if meta_desc else '' # type: ignore
+        # Extract URL path
         url_path = urlparse(url).path
+        # Combine text to analyze
         combined_text = f"{title} {description} {url_path}".lower()
         tokens = word_tokenize(combined_text)
         lemmatized = [lemmatizer.lemmatize(token) for token in tokens if token.isalpha() and token not in stop_words]
@@ -611,41 +373,20 @@ def scrape_site(url, query_keywords, visited_urls):
     return relevant_paragraphs
 
 def scrape_web(query):
-    """Scrape web using parallel requests, checking cache first."""
-    topic = normalize_query(query)
-    cached_answer = load_cache(topic, query)
-    if cached_answer:
-        return cached_answer
-
+    """Scrape web for query using googlesearch-python, only visiting topic-relevant sites."""
     query_keywords = get_query_keywords(query)
     visited_urls = set()
-    urls = list(search(query, num_results=CONFIG['num_results'], sleep_interval=CONFIG['search_pause']))
-
-    # Parallel relevance checking
-    relevant_urls = []
-    with ThreadPoolExecutor(max_workers=CONFIG['max_workers']) as executor:
-        future_to_url = {executor.submit(is_site_relevant, url, query_keywords): url for url in urls}
-        for future in as_completed(future_to_url):
-            url = future_to_url[future]
-            try:
-                if future.result():
-                    relevant_urls.append(url)
-            except Exception:
-                continue
-
-    # Parallel scraping of relevant sites
-    with ThreadPoolExecutor(max_workers=CONFIG['max_workers']) as executor:
-        future_to_url = {executor.submit(scrape_site, url, query_keywords, visited_urls): url for url in relevant_urls}
-        for future in as_completed(future_to_url):
-            try:
-                paragraphs = future.result()
-                if paragraphs:
-                    answer = paragraphs[0]
-                    save_cache(topic, query, answer)
-                    return answer
-            except Exception:
-                continue
+    try:
+        urls = search(query, num_results=CONFIG['num_results'], sleep_interval=CONFIG['search_pause'])
+        for url in urls:
+            if is_site_relevant(url, query_keywords):
+                relevant_paragraphs = scrape_site(url, query_keywords, visited_urls)
+                if relevant_paragraphs:
+                    return relevant_paragraphs[0]
             time.sleep(CONFIG['search_pause'])
+    except Exception as e:
+        print(f"Error during search: {e}")
+        return None
     return None
 
 def main():
@@ -660,8 +401,15 @@ def main():
             print("Bot: Please enter a valid query.")
             continue
 
+        topic = normalize_query(query)
+        cached = load_cache(topic)
+        if cached and cached['query'].lower() == query.lower():
+            print(f"Bot: {cached['answer']}")
+            continue
+
         answer = scrape_web(query)
         if answer:
+            save_cache(topic, query, answer)
             print(f"Bot: {answer}")
         else:
             print("Bot: [Info] No relevant content found.")
